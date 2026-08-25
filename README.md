@@ -69,8 +69,8 @@ cd frontend && npm run dev
 2. In the **Render Dashboard**, click **New > Blueprint**.
 3. Select this repository. Render will automatically detect `render.yaml` and configure the backend service with:
    - **Runtime**: Python
-   - **Build Command**: `pip install -r backend/requirements.txt && python -m spacy download en_core_web_sm`
-   - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT --app-dir backend`
+   - **Build Command**: `pip install -r backend/requirements.txt`
+   - **Start Command**: `uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT`
    - **Health Check Path**: `/health`
 4. Under the service's **Environment** tab on Render, add:
    - `ANTHROPIC_API_KEY`: Your Anthropic API key.

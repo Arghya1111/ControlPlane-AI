@@ -4,26 +4,32 @@ from typing import List, Set, Tuple, Optional
 from app.models import CheckRequest, RiskSignal, RiskDimension
 from app.detectors.base import BaseDetector
 
-# Optional Presidio analyzer initialization using lightweight en_core_web_sm
-try:
-    from presidio_analyzer import AnalyzerEngine  # type: ignore
-    from presidio_analyzer.nlp_engine import NlpEngineProvider  # type: ignore
+# Lazy initialization cache for Presidio AnalyzerEngine
+_analyzer = None
+_presidio_attempted = False
 
-    # Explicitly configure Presidio to use the lightweight en_core_web_sm model (~12MB)
-    # instead of the default en_core_web_lg (~588MB) to stay well within Render's 512MB RAM limit.
-    nlp_config = {
-        "nlp_engine_name": "spacy",
-        "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],
-    }
-    nlp_engine = NlpEngineProvider(nlp_configuration=nlp_config).create_engine()
-    analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
-    PRESIDIO_AVAILABLE = True
-except Exception:
-    # Graceful fallback: regex scanning handles all PII entity patterns
-    PRESIDIO_AVAILABLE = False
-    analyzer = None
 
-# Comprehensive Regex patterns for fallback PII scanning
+def _get_analyzer():
+    """Lazily initialize Presidio AnalyzerEngine with lightweight en_core_web_sm model (~12MB)."""
+    global _analyzer, _presidio_attempted
+    if not _presidio_attempted:
+        _presidio_attempted = True
+        try:
+            from presidio_analyzer import AnalyzerEngine  # type: ignore
+            from presidio_analyzer.nlp_engine import NlpEngineProvider  # type: ignore
+
+            nlp_config = {
+                "nlp_engine_name": "spacy",
+                "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],
+            }
+            nlp_engine = NlpEngineProvider(nlp_configuration=nlp_config).create_engine()
+            _analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
+        except Exception:
+            _analyzer = None
+    return _analyzer
+
+
+# Comprehensive Regex patterns for fallback and standalone PII scanning
 REGEX_PATTERNS = {
     "EMAIL": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b"),
     "PHONE_NUMBER": re.compile(r"\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"),
@@ -60,14 +66,16 @@ class PIIEntityDetector(BaseDetector):
 
     def _extract_pii(self, text: str) -> List[Tuple[str, str]]:
         """Extract PII entity types and matching snippets."""
-        findings: List[Tuple[str, str]] = []
-        if PRESIDIO_AVAILABLE and analyzer is not None:
+        analyzer = _get_analyzer()
+        if analyzer is not None:
             try:
                 results = analyzer.analyze(text=text, language="en")
-                for res in results:
-                    snippet = text[res.start:res.end]
-                    findings.append((res.entity_type, snippet))
-                return findings
+                if results:
+                    findings: List[Tuple[str, str]] = []
+                    for res in results:
+                        snippet = text[res.start:res.end]
+                        findings.append((res.entity_type, snippet))
+                    return findings
             except Exception:
                 # Fallback to regex on Presidio runtime failure
                 pass
