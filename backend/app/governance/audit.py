@@ -91,7 +91,7 @@ def record_audit_event(db: Session, request: CheckRequest, decision: Decision) -
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    db.merge(record)
+    record = db.merge(record)
     db.commit()
     db.refresh(record)
     return record

@@ -212,9 +212,6 @@ class StatisticalAnomalyDetector(BaseDetector):
 
         is_outlier = max_similarity < self.anomaly_threshold
 
-        # Add processed response into the rolling baseline pool
-        self.record_response_embedding(request.use_case_id, request.ai_response, resp_vec)
-
         if is_outlier:
             # =========================================================================
             # RISK DIMENSIONS & CONFIDENCE RATIONALE:
@@ -243,6 +240,8 @@ class StatisticalAnomalyDetector(BaseDetector):
                 latency_ms=self.calculate_latency_ms(start_time),
             )
         else:
+            # Add confirmed in-distribution response into the rolling baseline pool
+            self.record_response_embedding(request.use_case_id, request.ai_response, resp_vec)
             confidence = 0.05
             evidence = (
                 f"Statistical in-distribution match: Response conforms to '{request.use_case_id}' "

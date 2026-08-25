@@ -40,6 +40,11 @@ wheels/
 .coverage
 htmlcov/
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
 # Environments & Secret Keys
 .env
 .env*.local

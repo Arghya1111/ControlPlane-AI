@@ -26,6 +26,7 @@ DIRECT_STEREOTYPE_PATTERNS = [
     re.compile(r"\b(?:older\s+workers|seniors)\s+(?:can't\s+learn|are\s+useless\s+with)\s+technology\b", re.IGNORECASE),
     re.compile(r"\b(?:hire|promote)\s+only\s+(?:men|women|younger\s+people|native\s+speakers)\b", re.IGNORECASE),
     re.compile(r"\b(?:people\s+with\s+disabilities|disabled\s+employees)\s+cannot\s+be\s+productive\b", re.IGNORECASE),
+    re.compile(rf"\b(?:differs?|differences?|gap|disparity)\s+between\s+{DEMOGRAPHIC_TERMS}\s+and\s+{DEMOGRAPHIC_TERMS}\b", re.IGNORECASE),
 ]
 
 # Statistical and qualifying factual indicators to reduce false positives

@@ -12,12 +12,12 @@ from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from backend.app.db import FeedbackExampleRecord, AuditLogRecord
-from backend.app.models import RiskSignal
+from app.db import FeedbackExampleRecord, AuditLogRecord
+from app.models import RiskSignal
 
 
 class DetectorPerformanceStats(BaseModel):
-    detector_name: string = Field(..., alias="detector_name")
+    detector_name: str = Field(..., alias="detector_name")
     total_evaluated_overrides: int
     flagged_count: int
     true_positive_count: int

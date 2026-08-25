@@ -1,4 +1,4 @@
-from backend.app.feedback.loop import (
+from app.feedback.loop import (
     store_feedback_example,
     compute_detector_performance,
     DetectorPerformanceStats,

@@ -9,9 +9,15 @@ from app.models import CheckRequest, Decision, DecisionTier, RiskSignal
 from app.governance.audit import record_audit_event, record_human_override, OverrideRequest
 from app.feedback.loop import store_feedback_example, compute_detector_performance
 
+from sqlalchemy.pool import StaticPool
+
 # In-memory SQLite for testing
 TEST_DB_URL = "sqlite:///:memory:"
-engine = create_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
+engine = create_engine(
+    TEST_DB_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
