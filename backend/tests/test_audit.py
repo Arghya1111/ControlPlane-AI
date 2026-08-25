@@ -95,3 +95,13 @@ def test_audit_override_nonexistent_record():
     }
     resp = client.post("/v1/audit/dec_nonexistent_9999/override", json=override_payload)
     assert resp.status_code == 404
+
+
+def test_audit_count_endpoint():
+    """Verify lightweight GET /v1/audit/count returns total count."""
+    resp = client.get("/v1/audit/count")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "total" in data
+    assert isinstance(data["total"], int)
+    assert data["total"] >= 0

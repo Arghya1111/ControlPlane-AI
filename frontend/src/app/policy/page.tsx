@@ -101,31 +101,39 @@ const STATIC_POLICY_DETAILS: Record<string, {
   },
 };
 
+import { API_BASE_URL } from "@/lib/api";
+
 export default function PolicyPage() {
   const [profiles, setProfiles] = useState<UseCaseProfile[]>([]);
   const [performance, setPerformance] = useState<FeedbackPerformanceResponse | null>(null);
   const [loadingFeedback, setLoadingFeedback] = useState<boolean>(true);
 
-  const apiUrl = (typeof process !== "undefined" && process.env && process.env.NEXT_PUBLIC_API_URL)
-    ? process.env.NEXT_PUBLIC_API_URL
-    : "http://127.0.0.1:8000";
-
   useEffect(() => {
     // Fetch active policies
-    fetch(`${apiUrl}/v1/use-cases`)
-      .then((res: Response) => res.json())
+    fetch(`${API_BASE_URL}/v1/use-cases`)
+      .then((res: Response) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then((data: any) => {
         if (Array.isArray(data)) setProfiles(data);
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("ControlPlane.ai: Failed to load policies from", API_BASE_URL, err);
+      });
 
     // Fetch detector calibration statistics from feedback loop
-    fetch(`${apiUrl}/v1/feedback/detector-performance`)
-      .then((res: Response) => res.json())
+    fetch(`${API_BASE_URL}/v1/feedback/detector-performance`)
+      .then((res: Response) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then((data: FeedbackPerformanceResponse) => {
         setPerformance(data);
       })
-      .catch(() => {})
+      .catch((err) => {
+        console.error("ControlPlane.ai: Failed to load feedback stats from", API_BASE_URL, err);
+      })
       .finally(() => setLoadingFeedback(false));
   }, []);
 

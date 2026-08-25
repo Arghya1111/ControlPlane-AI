@@ -10,6 +10,7 @@ from app.governance.audit import (
     OverrideRequest,
     record_audit_event,
     query_audit_logs,
+    count_audit_logs,
     record_human_override,
 )
 from app.governance.metrics import (
@@ -32,6 +33,7 @@ __all__ = [
     "OverrideRequest",
     "record_audit_event",
     "query_audit_logs",
+    "count_audit_logs",
     "record_human_override",
     "GovernanceMetricsResponse",
     "compute_governance_metrics",

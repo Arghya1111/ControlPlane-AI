@@ -13,7 +13,10 @@ import {
   Send,
   X,
   Sparkles,
+  ServerCrash,
+  AlertCircle,
 } from "lucide-react";
+import { API_BASE_URL } from "@/lib/api";
 
 interface RiskSignal {
   detector_name: string;
@@ -47,6 +50,7 @@ interface AuditLogEntry {
 export default function ReviewQueuePage() {
   const [items, setItems] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [activeReviewItem, setActiveReviewItem] = useState<AuditLogEntry | null>(null);
   
   // Override Form State
@@ -56,19 +60,20 @@ export default function ReviewQueuePage() {
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const apiUrl = (typeof process !== "undefined" && process.env && process.env.NEXT_PUBLIC_API_URL)
-    ? process.env.NEXT_PUBLIC_API_URL
-    : "http://127.0.0.1:8000";
-
   const fetchFlaggedItems = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
-      const res = await fetch(`${apiUrl}/v1/audit?tier=flag_for_review&limit=50`);
-      if (res.ok) {
-        const data = await res.json();
-        setItems(data.items || []);
+      const res = await fetch(`${API_BASE_URL}/v1/audit?tier=flag_for_review&limit=50`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
-    } catch (_) {
+      const data = await res.json();
+      setItems(data.items || []);
+    } catch (err: any) {
+      console.error("ControlPlane.ai: Failed to fetch flagged items from", API_BASE_URL, err);
+      setFetchError(err?.message || "Failed to connect to backend");
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -100,7 +105,7 @@ export default function ReviewQueuePage() {
         notes: justification,
       };
 
-      const res = await fetch(`${apiUrl}/v1/audit/${activeReviewItem.id}/override`, {
+      const res = await fetch(`${API_BASE_URL}/v1/audit/${activeReviewItem.id}/override`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -117,6 +122,7 @@ export default function ReviewQueuePage() {
         alert(`Failed to submit override: ${err.detail || "Unknown error"}`);
       }
     } catch (err: any) {
+      console.error("ControlPlane.ai: Failed to submit override", err);
       alert(`Network error: ${err.message}`);
     } finally {
       setSubmitting(false);
@@ -146,6 +152,19 @@ export default function ReviewQueuePage() {
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} /> Refresh Queue
         </button>
       </div>
+
+      {/* Error Banner */}
+      {fetchError && (
+        <div className="bg-rose-950/50 border border-rose-500/40 rounded-xl p-4 flex items-start gap-3 text-rose-200 text-xs">
+          <ServerCrash className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold text-rose-300">Could not connect to Backend API</p>
+            <p className="text-slate-400">
+              Failed to load review queue from <code className="text-rose-300 font-mono">{API_BASE_URL}</code> ({fetchError}).
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification */}
       {toastMessage && (
@@ -247,89 +266,105 @@ export default function ReviewQueuePage() {
         )}
       </div>
 
-      {/* Human Review Modal */}
+      {/* Review & Override Modal */}
       {activeReviewItem && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div>
-                <span className="text-xs font-mono text-slate-400">Record: {activeReviewItem.id}</span>
-                <h3 className="text-base font-bold text-white">
-                  Record Human Override: {targetTier.toUpperCase()}
-                </h3>
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 space-y-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center space-x-2">
+                <UserCheck className="w-5 h-5 text-indigo-400" />
+                <h3 className="text-lg font-bold text-white">Record Compliance Override</h3>
               </div>
               <button
                 onClick={() => setActiveReviewItem(null)}
-                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200"
+                className="p-1.5 rounded-lg border border-slate-800 hover:bg-slate-800 text-slate-400 hover:text-slate-200"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={submitOverride} className="space-y-4">
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 text-xs">
+                <div className="flex justify-between text-slate-400 font-mono">
+                  <span>Decision ID: {activeReviewItem.id}</span>
+                  <span>Use Case: {activeReviewItem.use_case_id}</span>
+                </div>
+                <div className="text-slate-300 font-medium truncate">
+                  <span className="text-indigo-400">Prompt:</span> {activeReviewItem.prompt}
+                </div>
+              </div>
+
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                  Reviewer ID / Sign-off Identity
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Target Decision Tier
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setTargetTier("allow")}
+                    className={`py-2 px-4 rounded-lg text-xs font-semibold border flex items-center justify-center gap-2 transition ${
+                      targetTier === "allow"
+                        ? "bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-600/30"
+                        : "bg-slate-950 text-slate-400 border-slate-800 hover:bg-slate-850"
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> ALLOW (Approve)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTargetTier("block")}
+                    className={`py-2 px-4 rounded-lg text-xs font-semibold border flex items-center justify-center gap-2 transition ${
+                      targetTier === "block"
+                        ? "bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-600/30"
+                        : "bg-slate-950 text-slate-400 border-slate-800 hover:bg-slate-850"
+                    }`}
+                  >
+                    <ShieldAlert className="w-4 h-4" /> BLOCK (Reject)
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Compliance Auditor Identifier
                 </label>
                 <input
                   type="text"
-                  required
                   value={reviewerId}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReviewerId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+                  onChange={(e) => setReviewerId(e.target.value)}
+                  required
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                  Override Decision Tier
-                </label>
-                <select
-                  value={targetTier}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetTier(e.target.value as "allow" | "block")}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-semibold"
-                >
-                  <option value="allow">ALLOW (Release to User)</option>
-                  <option value="block">BLOCK (Suppress Response)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                  Auditor Justification Note (Audit Trail)
+                <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                  Auditor Justification & Notes (Feeds Calibration Loop)
                 </label>
                 <textarea
-                  rows={3}
-                  required
                   value={justification}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setJustification(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 leading-relaxed font-sans"
-                  placeholder="Explain why the automated tier was overridden..."
+                  onChange={(e) => setJustification(e.target.value)}
+                  required
+                  rows={3}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
-              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-end space-x-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setActiveReviewItem(null)}
-                  className="px-4 py-2 rounded-lg border border-slate-800 hover:bg-slate-800 text-slate-300 text-xs font-medium"
+                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition shadow-lg shadow-indigo-600/30"
+                  className="flex items-center gap-1.5 px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30"
                 >
-                  {submitting ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving Override...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-3.5 h-3.5" /> Submit Audit Override
-                    </>
-                  )}
+                  {submitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  Confirm Override & Record Feedback
                 </button>
               </div>
             </form>

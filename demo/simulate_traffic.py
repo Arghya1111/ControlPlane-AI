@@ -169,8 +169,12 @@ WEALTH_ADVISOR_EXCHANGES: List[Dict[str, Any]] = [
 ]
 
 
+import uuid
+
+
 def send_interaction(base_url: str, use_case_id: str, prompt: str, response: str, context: List[str] = None) -> Dict[str, Any]:
     payload = {
+        "id": f"sim_{uuid.uuid4().hex[:12]}",
         "use_case_id": use_case_id,
         "prompt": prompt,
         "ai_response": response,
@@ -227,8 +231,17 @@ def apply_sample_overrides(base_url: str) -> int:
 
 
 def main():
+    default_url = (
+        os.getenv("API_BASE_URL")
+        or os.getenv("NEXT_PUBLIC_API_URL")
+        or "http://127.0.0.1:8000"
+    )
     parser = argparse.ArgumentParser(description="Simulate enterprise traffic for ControlPlane.ai")
-    parser.add_argument("--url", default="http://127.0.0.1:8000", help="Base API URL of backend")
+    parser.add_argument(
+        "--url",
+        default=default_url,
+        help="Base API URL of backend (defaults to API_BASE_URL env var or http://127.0.0.1:8000)",
+    )
     parser.add_argument("--iterations", type=int, default=1, help="Number of complete passes")
     parser.add_argument("--overrides", action="store_true", default=True, help="Apply sample human overrides for review queue demo")
     args = parser.parse_args()
@@ -239,19 +252,28 @@ def main():
     print("  CONTROLPLANE.AI — ENTERPRISE TRAFFIC & DEMO SEEDING SIMULATOR")
     print("=" * 80)
     print(f" Target Backend: {base_url}")
-    print(f" Checking API health...")
+    print(f" Checking API health (polling up to 60s for cold-starts)...")
 
-    try:
-        health = requests.get(f"{base_url}/health", timeout=5)
-        if not health.ok:
-            print(f"[x] Error: Backend returned HTTP {health.status_code} at {base_url}/health")
-            sys.exit(1)
-    except Exception as e:
-        print(f"[x] Could not connect to {base_url}/health. Please ensure the backend is running.")
-        print(f"    Start backend with: uvicorn backend.app.main:app --port 8000")
+    healthy = False
+    for attempt in range(1, 13):
+        try:
+            health = requests.get(f"{base_url}/health", timeout=10)
+            if health.ok:
+                healthy = True
+                break
+            else:
+                print(f"   [attempt {attempt}/12] HTTP {health.status_code}, retrying in 5s...")
+        except Exception as e:
+            print(f"   [attempt {attempt}/12] Waiting for backend ({e.__class__.__name__}), retrying in 5s...")
+        time.sleep(5)
+
+    if not healthy:
+        print(f"\n[x] Could not connect to {base_url}/health after 60s. Please ensure the backend is running.")
+        print(f"    Local start command:  uvicorn backend.app.main:app --port 8000")
+        print(f"    Deployed check:       curl {base_url}/health")
         sys.exit(1)
 
-    print("[✓] Backend is healthy and online!\n")
+    print("[OK] Backend is healthy and online!\n")
 
     stats = {
         "customer_support_bot": {"allow": 0, "edit": 0, "flag_for_review": 0, "block": 0, "total": 0, "latencies": []},
@@ -310,7 +332,7 @@ def main():
     if args.overrides:
         print("\n[-] Applying sample human review overrides in review queue...")
         num_over = apply_sample_overrides(base_url)
-        print(f"    [✓] Recorded {num_over} human reviewer overrides to seed calibration feedback loop.")
+        print(f"    [OK] Recorded {num_over} human reviewer overrides to seed calibration feedback loop.")
 
     # Print Summary Table
     print("\n" + "=" * 85)
@@ -327,8 +349,8 @@ def main():
         )
 
     print("-" * 85)
-    print("\n[✓] Demo seeding complete! The dashboard now contains rich, realistic data:")
-    print("  * Live Audit Feed:       http://localhost:3000/dashboard")
+    print("\n[OK] Demo seeding complete! The dashboard now contains rich, realistic data:")
+    print("  * Live Audit Feed:       http://localhost:3000/dashboard (or deployed Vercel URL)")
     print("  * Policy Viewer:         http://localhost:3000/policy")
     print("  * Review Queue:          http://localhost:3000/review")
     print("  * Governance Metrics:    http://localhost:3000/metrics")

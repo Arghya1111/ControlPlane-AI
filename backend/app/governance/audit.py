@@ -123,6 +123,20 @@ def query_audit_logs(
     return total, records
 
 
+def count_audit_logs(
+    db: Session,
+    use_case_id: Optional[str] = None,
+    tier: Optional[str] = None,
+) -> int:
+    """Return fast total count of audit logs matching filters."""
+    query = db.query(AuditLogRecord)
+    if use_case_id:
+        query = query.filter(AuditLogRecord.use_case_id == use_case_id)
+    if tier:
+        query = query.filter(AuditLogRecord.tier == tier.lower())
+    return query.count()
+
+
 def record_human_override(
     db: Session,
     decision_id: str,

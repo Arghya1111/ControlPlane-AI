@@ -74,24 +74,27 @@ interface GovernanceMetricsResponse {
   time_series_history: TimeSeriesPoint[];
 }
 
+import { API_BASE_URL } from "@/lib/api";
+
 export default function MetricsPage() {
   const [metrics, setMetrics] = useState<GovernanceMetricsResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedUseCaseFilter, setSelectedUseCaseFilter] = useState<string>("all");
-
-  const apiUrl = (typeof process !== "undefined" && process.env && process.env.NEXT_PUBLIC_API_URL)
-    ? process.env.NEXT_PUBLIC_API_URL
-    : "http://127.0.0.1:8000";
 
   const fetchMetrics = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
-      const res = await fetch(`${apiUrl}/v1/metrics/summary?hours=24`);
-      if (res.ok) {
-        const data = await res.json();
-        setMetrics(data);
+      const res = await fetch(`${API_BASE_URL}/v1/metrics/summary?hours=24`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
-    } catch (_) {
+      const data = await res.json();
+      setMetrics(data);
+    } catch (err: any) {
+      console.error("ControlPlane.ai: Failed to load metrics from", API_BASE_URL, err);
+      setFetchError(err?.message || "Failed to connect to backend");
     } finally {
       setLoading(false);
     }
@@ -153,6 +156,19 @@ export default function MetricsPage() {
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} /> Refresh Metrics
         </button>
       </div>
+
+      {/* Error Banner */}
+      {fetchError && (
+        <div className="bg-rose-950/50 border border-rose-500/40 rounded-xl p-4 flex items-start gap-3 text-rose-200 text-xs">
+          <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold text-rose-300">Could not load telemetry metrics</p>
+            <p className="text-slate-400">
+              Failed to connect to backend at <code className="text-rose-300 font-mono">{API_BASE_URL}</code> ({fetchError}).
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* EXECUTIVE TRUSTWORTHINESS BRIEFING CARD */}
       <div className="bg-gradient-to-br from-indigo-950/40 via-slate-900/90 to-slate-950 border border-indigo-500/30 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-4">

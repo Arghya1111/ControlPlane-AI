@@ -14,18 +14,16 @@ import {
   FileCheck2,
 } from "lucide-react";
 
+import { API_BASE_URL } from "@/lib/api";
+
 export default function Navbar() {
   const pathname = usePathname();
   const [reviewCount, setReviewCount] = useState<number>(0);
   const [isBackendHealthy, setIsBackendHealthy] = useState<boolean>(true);
 
-  const apiUrl = (typeof process !== "undefined" && process.env && process.env.NEXT_PUBLIC_API_URL)
-    ? process.env.NEXT_PUBLIC_API_URL
-    : "http://127.0.0.1:8000";
-
   const fetchReviewCount = async () => {
     try {
-      const res = await fetch(`${apiUrl}/v1/audit?tier=flag_for_review&limit=1`);
+      const res = await fetch(`${API_BASE_URL}/v1/audit?tier=flag_for_review&limit=1`);
       if (res.ok) {
         const data = await res.json();
         setReviewCount(data.total || 0);

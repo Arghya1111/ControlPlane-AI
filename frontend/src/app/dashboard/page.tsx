@@ -18,7 +18,11 @@ import {
   Database,
   ArrowUpRight,
   X,
+  AlertCircle,
+  Terminal,
+  ServerCrash,
 } from "lucide-react";
+import { API_BASE_URL } from "@/lib/api";
 
 interface RiskSignal {
   detector_name: string;
@@ -59,6 +63,7 @@ export default function DashboardPage() {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [totalCount, setTotalCount] = useState<number>(0);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   
   // Filters
   const [selectedUseCase, setSelectedUseCase] = useState<string>("");
@@ -68,25 +73,27 @@ export default function DashboardPage() {
   // Detail Modal
   const [selectedEntry, setSelectedEntry] = useState<AuditLogEntry | null>(null);
 
-  const apiUrl = (typeof process !== "undefined" && process.env && process.env.NEXT_PUBLIC_API_URL)
-    ? process.env.NEXT_PUBLIC_API_URL
-    : "http://127.0.0.1:8000";
-
   const fetchAuditLogs = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const params = new URLSearchParams();
       if (selectedUseCase) params.append("use_case_id", selectedUseCase);
       if (selectedTier) params.append("tier", selectedTier);
       params.append("limit", "100");
 
-      const res = await fetch(`${apiUrl}/v1/audit?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setLogs(data.items || []);
-        setTotalCount(data.total || 0);
+      const res = await fetch(`${API_BASE_URL}/v1/audit?${params.toString()}`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
-    } catch (_) {
+      const data = await res.json();
+      setLogs(data.items || []);
+      setTotalCount(data.total || 0);
+    } catch (err: any) {
+      console.error("ControlPlane.ai: Failed to fetch audit logs from backend at", API_BASE_URL, err);
+      setFetchError(err?.message || "Failed to connect to backend");
+      setLogs([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
@@ -114,9 +121,6 @@ export default function DashboardPage() {
   const flagCount = logs.filter((l: AuditLogEntry) => l.tier === "flag_for_review").length;
   const blockCount = logs.filter((l: AuditLogEntry) => l.tier === "block").length;
   const editCount = logs.filter((l: AuditLogEntry) => l.tier === "edit").length;
-  const avgConfidence = logs.length
-    ? (logs.reduce((acc: number, l: AuditLogEntry) => acc + l.aggregate_confidence, 0) / logs.length) * 100
-    : 0;
 
   const renderTierBadge = (tier: string, isOverride?: boolean) => {
     switch (tier) {
@@ -167,6 +171,33 @@ export default function DashboardPage() {
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} /> Refresh Feed
         </button>
       </div>
+
+      {/* Ephemeral DB & Demo Notice Banner */}
+      <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-indigo-200">
+        <div className="flex items-start sm:items-center gap-2.5">
+          <Database className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5 sm:mt-0" />
+          <span>
+            <strong>Ephemeral Demo Storage:</strong> Demo data resets when the backend restarts. If this feed is empty, re-run the seed script.
+          </span>
+        </div>
+        <div className="bg-slate-950/80 border border-indigo-500/20 px-2.5 py-1 rounded font-mono text-[11px] text-slate-300 select-all shrink-0">
+          python demo/simulate_traffic.py --url {API_BASE_URL}
+        </div>
+      </div>
+
+      {/* Fetch Error Banner */}
+      {fetchError && (
+        <div className="bg-rose-950/50 border border-rose-500/40 rounded-xl p-4 flex items-start gap-3 text-rose-200">
+          <ServerCrash className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+          <div className="space-y-1 text-xs">
+            <p className="font-semibold text-rose-300">Could not connect to Backend API</p>
+            <p className="text-slate-400">
+              Failed to reach <code className="text-rose-300 font-mono">{API_BASE_URL}</code> ({fetchError}).
+              Please check your network connection or verify that CORS permits this domain.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* KPI Metric Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
@@ -260,7 +291,21 @@ export default function DashboardPage() {
               ) : filteredLogs.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
-                    No matching audit records found. Run a check or simulate traffic to generate logs!
+                    {fetchError ? (
+                      <div className="space-y-1">
+                        <AlertCircle className="w-6 h-6 text-rose-400 mx-auto mb-2" />
+                        <p className="text-slate-300 font-medium">Failed to load audit records</p>
+                        <p className="text-xs text-slate-500">Check that the backend is online and reachable.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Database className="w-6 h-6 text-slate-600 mx-auto mb-2" />
+                        <p className="text-slate-300 font-medium">No audit records found</p>
+                        <p className="text-xs text-slate-500 max-w-md mx-auto">
+                          The backend database currently contains 0 records. Run the traffic simulation script to populate realistic interactions.
+                        </p>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -383,42 +428,57 @@ export default function DashboardPage() {
             )}
 
             {/* Contributing Detector Signals */}
-            <div className="space-y-2">
+            <div className="space-y-3">
               <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Contributing Detector Signals ({selectedEntry.contributing_signals.length})
+                Active Detector Signals ({selectedEntry.contributing_signals.length})
               </span>
               <div className="space-y-2">
                 {selectedEntry.contributing_signals.map((sig: RiskSignal, idx: number) => (
-                  <div key={idx} className="bg-slate-950 border border-slate-800/80 rounded-lg p-3 text-xs space-y-1.5">
+                  <div
+                    key={idx}
+                    className="bg-slate-950 border border-slate-800/80 rounded-xl p-3.5 flex flex-col gap-2"
+                  >
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-indigo-300 font-mono">{sig.detector_name}</span>
-                      <span className="text-slate-400 font-mono">{sig.latency_ms}ms</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-slate-500">Dimensions:</span>
-                      {sig.risk_dimensions.map((dim: string) => (
-                        <span key={dim} className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[11px]">
-                          {dim}
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-bold text-slate-200 font-mono">{sig.detector_name}</span>
+                        {sig.risk_dimensions.map((dim: string) => (
+                          <span
+                            key={dim}
+                            className="px-2 py-0.5 rounded text-[10px] uppercase font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
+                          >
+                            {dim}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex items-center space-x-3 text-xs font-mono">
+                        <span className="text-slate-400">{sig.latency_ms.toFixed(1)}ms</span>
+                        <span className={`font-bold ${sig.confidence > 0.6 ? "text-rose-400" : sig.confidence > 0.3 ? "text-yellow-400" : "text-emerald-400"}`}>
+                          {(sig.confidence * 100).toFixed(1)}% risk
                         </span>
-                      ))}
-                      <span className="ml-auto font-mono text-slate-300 font-bold">
-                        Score: {(sig.confidence * 100).toFixed(0)}%
-                      </span>
+                      </div>
                     </div>
-                    <p className="text-slate-400 italic pt-1 font-sans">{sig.evidence}</p>
+                    <p className="text-xs text-slate-400 leading-normal">{sig.evidence}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Override status if present */}
+            {/* Human Override Metadata if present */}
             {selectedEntry.override && (
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3.5 text-xs text-amber-300 space-y-1">
-                <span className="font-semibold flex items-center gap-1">
-                  <UserCheck className="w-4 h-4" /> Human Override Recorded
-                </span>
-                <p>Reviewed By: <span className="font-mono">{selectedEntry.reviewed_by}</span></p>
-                <p>Override Notes: {selectedEntry.override_notes}</p>
+              <div className="bg-indigo-950/30 border border-indigo-500/30 rounded-xl p-4 space-y-2">
+                <div className="flex items-center space-x-2 text-indigo-400">
+                  <UserCheck className="w-4 h-4" />
+                  <span className="text-xs font-bold uppercase tracking-wider">Human Override Applied</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs text-slate-300">
+                  <div><span className="text-slate-500">Reviewer:</span> {selectedEntry.reviewed_by}</div>
+                  <div><span className="text-slate-500">Target Tier:</span> {selectedEntry.override_tier?.toUpperCase()}</div>
+                </div>
+                {selectedEntry.override_notes && (
+                  <p className="text-xs text-slate-400 bg-slate-950/60 p-2.5 rounded border border-indigo-500/20">
+                    <span className="font-semibold text-slate-300">Auditor Justification:</span> {selectedEntry.override_notes}
+                  </p>
+                )}
               </div>
             )}
           </div>

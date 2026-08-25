@@ -38,6 +38,7 @@ from app.governance import (
     OverrideRequest,
     record_audit_event,
     query_audit_logs,
+    count_audit_logs,
     record_human_override,
     GovernanceMetricsResponse,
     compute_governance_metrics,
@@ -54,13 +55,17 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Parse allowed CORS origins from environment variable (comma-separated), defaulting to local frontend
-raw_allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
+# Parse allowed CORS origins from environment variable (comma-separated), with standard defaults
+raw_allowed_origins = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,http://127.0.0.1:3000,https://control-plane-ai.vercel.app",
+)
 allowed_origins = [origin.strip() for origin in raw_allowed_origins.split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=r"https:\/\/.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -163,6 +168,17 @@ def get_audit_trail(
         total=total,
         items=[AuditLogEntry.from_record(r) for r in records],
     )
+
+
+@app.get("/v1/audit/count", tags=["Governance & Audit"])
+def get_audit_count(
+    use_case_id: Optional[str] = Query(None, description="Filter by use case ID"),
+    tier: Optional[str] = Query(None, description="Filter by decision tier (allow, edit, flag_for_review, block)"),
+    db: Session = Depends(get_db),
+):
+    """Return total count of audit records for fast dashboard polling and status check."""
+    count = count_audit_logs(db=db, use_case_id=use_case_id, tier=tier)
+    return {"total": count}
 
 
 @app.post("/v1/audit/{decision_id}/override", response_model=AuditLogEntry, tags=["Governance & Audit"])
