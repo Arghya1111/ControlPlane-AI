@@ -1,0 +1,32 @@
+id: "wealth_advisor_copilot"
+aliases:
+  - "decision_support"
+name: "Wealth Management Advisory Copilot"
+channel_type: "decision_support"
+latency_budget_ms: 1500
+risk_tolerance: "low"
+fail_mode: "fail_closed"
+requires_human_review_above: 0.30
+
+# Comprehensive detectors including AI-as-a-Judge for fiduciary oversight
+enabled_detectors:
+  - "pii_entity_detector"
+  - "retrieval_verification_detector"
+  - "ai_judge_detector"
+  - "bias_heuristic_detector"
+  - "statistical_anomaly_detector"
+
+# Strict fiduciary weights heavily emphasizing grounding and independent LLM review
+detector_weights:
+  retrieval_verification_detector: 0.35
+  ai_judge_detector: 0.30
+  pii_entity_detector: 0.20
+  bias_heuristic_detector: 0.10
+  statistical_anomaly_detector: 0.05
+
+# Strict threshold bands: low tolerance for ungrounded or biased advice
+threshold_bands:
+  allow: [0.0, 0.15]
+  edit: [0.15, 0.30]
+  flag_for_review: [0.30, 0.50]
+  block: [0.50, 1.0]

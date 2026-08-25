@@ -1,0 +1,30 @@
+id: "internal_hr_assistant"
+aliases:
+  - "internal_copilot"
+name: "Internal Employee HR & Benefits Assistant"
+channel_type: "internal"
+latency_budget_ms: 800
+risk_tolerance: "high"
+fail_mode: "fail_open"
+requires_human_review_above: 0.70
+
+# Internal productivity detectors
+enabled_detectors:
+  - "pii_entity_detector"
+  - "retrieval_verification_detector"
+  - "bias_heuristic_detector"
+  - "statistical_anomaly_detector"
+
+# Weighting prioritizing internal knowledge grounding and fairness
+detector_weights:
+  retrieval_verification_detector: 0.35
+  bias_heuristic_detector: 0.30
+  pii_entity_detector: 0.25
+  statistical_anomaly_detector: 0.10
+
+# Flexible threshold bands for internal tooling
+threshold_bands:
+  allow: [0.0, 0.40]
+  edit: [0.40, 0.60]
+  flag_for_review: [0.60, 0.80]
+  block: [0.80, 1.0]

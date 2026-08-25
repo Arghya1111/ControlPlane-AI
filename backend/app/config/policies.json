@@ -1,0 +1,31 @@
+{
+  "use_cases": [
+    {
+      "id": "customer_support_bot",
+      "name": "Customer Support Virtual Assistant",
+      "channel_type": "customer_facing",
+      "latency_budget_ms": 300,
+      "risk_tolerance": "low",
+      "fail_mode": "fail_closed",
+      "requires_human_review_above": 0.70
+    },
+    {
+      "id": "wealth_advisor_copilot",
+      "name": "Wealth Management Portfolio Advisory Copilot",
+      "channel_type": "decision_support",
+      "latency_budget_ms": 1200,
+      "risk_tolerance": "low",
+      "fail_mode": "fail_closed",
+      "requires_human_review_above": 0.60
+    },
+    {
+      "id": "internal_hr_assistant",
+      "name": "Internal Employee HR & Benefits Assistant",
+      "channel_type": "internal",
+      "latency_budget_ms": 800,
+      "risk_tolerance": "medium",
+      "fail_mode": "fail_open",
+      "requires_human_review_above": 0.85
+    }
+  ]
+}
