@@ -4,12 +4,22 @@ from typing import List, Set, Tuple, Optional
 from app.models import CheckRequest, RiskSignal, RiskDimension
 from app.detectors.base import BaseDetector
 
-# Optional imports with graceful fallbacks
+# Optional Presidio analyzer initialization using lightweight en_core_web_sm
 try:
     from presidio_analyzer import AnalyzerEngine  # type: ignore
+    from presidio_analyzer.nlp_engine import NlpEngineProvider  # type: ignore
+
+    # Explicitly configure Presidio to use the lightweight en_core_web_sm model (~12MB)
+    # instead of the default en_core_web_lg (~588MB) to stay well within Render's 512MB RAM limit.
+    nlp_config = {
+        "nlp_engine_name": "spacy",
+        "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}],
+    }
+    nlp_engine = NlpEngineProvider(nlp_configuration=nlp_config).create_engine()
+    analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
     PRESIDIO_AVAILABLE = True
-    analyzer = AnalyzerEngine()
-except ImportError:
+except Exception:
+    # Graceful fallback: regex scanning handles all PII entity patterns
     PRESIDIO_AVAILABLE = False
     analyzer = None
 
