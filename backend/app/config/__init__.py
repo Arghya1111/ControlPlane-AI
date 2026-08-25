@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 from app.models import UseCaseProfile
 
-CONFIG_PATH = Path(__file__).parent / "policies.json"
+CONFIG_PATH = Path(__file__).resolve().parent / "policies.json"
 
 
 def load_use_case_profiles() -> Dict[str, UseCaseProfile]:

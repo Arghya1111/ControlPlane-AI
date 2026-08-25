@@ -1,9 +1,18 @@
+import os
+import logging
 import asyncio
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+
+# Configure structured logging for Render and local environments
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("controlplane.api")
 
 from app.models import (
     CheckRequest,
@@ -37,10 +46,13 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Enable CORS for frontend dashboard access
+# Parse allowed CORS origins from environment variable (comma-separated), defaulting to local frontend
+raw_allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
+allowed_origins = [origin.strip() for origin in raw_allowed_origins.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -51,8 +63,11 @@ orchestrator = Orchestrator()
 
 @app.on_event("startup")
 def on_startup():
+    logger.info("Starting ControlPlane.ai Responsible AI Middleware...")
+    logger.info(f"CORS enabled for origins: {allowed_origins}")
     init_db()
-    PolicyManager.load_policies()
+    loaded = PolicyManager.load_policies()
+    logger.info(f"Loaded {len(loaded)} governance policy configurations: {list(loaded.keys())}")
 
 
 @app.get("/health", tags=["System"])
@@ -78,6 +93,7 @@ def get_use_case(use_case_id: str):
     """Get a specific use case profile by ID or alias."""
     policy = PolicyManager.get_policy(use_case_id)
     if not policy:
+        logger.warning(f"Requested use case policy '{use_case_id}' was not found.")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Use case policy '{use_case_id}' not found",
@@ -92,9 +108,11 @@ async def check_interaction(request: CheckRequest, db: Session = Depends(get_db)
     Executes all configured detectors concurrently, aggregates risk signals,
     persists full immutable audit log, and returns a policy-governed tier decision.
     """
+    logger.info(f"Processing check request '{request.id}' for use case '{request.use_case_id}'")
     decision = await orchestrator.evaluate(request)
     # Immutable audit recording: nothing is checked without leaving a trace
     record_audit_event(db, request, decision)
+    logger.info(f"Decision for '{request.id}': tier={decision.tier.value} conf={decision.aggregate_confidence:.3f}")
     return decision
 
 
@@ -104,6 +122,7 @@ async def check_interaction_batch(requests: List[CheckRequest], db: Session = De
     if not requests:
         return []
 
+    logger.info(f"Processing batch of {len(requests)} check requests")
     decisions = await asyncio.gather(*(orchestrator.evaluate(req) for req in requests))
 
     for req, dec in zip(requests, decisions):
@@ -145,8 +164,10 @@ def override_audit_decision(
     db: Session = Depends(get_db),
 ):
     """Record a human operator override on a policy decision with reviewer ID and justification note."""
+    logger.info(f"Recording human override on decision '{decision_id}' by reviewer '{override_req.reviewer_id}' -> tier={override_req.override_tier.value}")
     record = record_human_override(db=db, decision_id=decision_id, override_req=override_req)
     if not record:
+        logger.warning(f"Override attempted for non-existent decision '{decision_id}'")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Audit decision record '{decision_id}' not found",

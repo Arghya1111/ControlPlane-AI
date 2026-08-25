@@ -1,16 +1,31 @@
 import os
+import logging
 from datetime import datetime, timezone
 from typing import Generator
 from sqlalchemy import Column, String, Float, DateTime, Text, JSON, Boolean, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./controlplane.db")
+logger = logging.getLogger("controlplane.db")
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
-)
+raw_db_url = os.getenv("DATABASE_URL", "sqlite:///./controlplane.db")
 
+# Render and older Heroku add-ons supply 'postgres://', which SQLAlchemy 1.4+ / 2.0+ deprecates in favor of 'postgresql://'
+if raw_db_url.startswith("postgres://"):
+    DATABASE_URL = raw_db_url.replace("postgres://", "postgresql://", 1)
+else:
+    DATABASE_URL = raw_db_url
+
+is_sqlite = DATABASE_URL.startswith("sqlite")
+
+engine_kwargs = {}
+if is_sqlite:
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    # Production connection pool tuning for PostgreSQL / managed DB
+    engine_kwargs["pool_pre_ping"] = True
+    engine_kwargs["pool_recycle"] = 300
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -95,6 +110,8 @@ class BaselineResponseRecord(Base):
 
 def init_db() -> None:
     """Initialize database tables."""
+    backend_name = "SQLite (ephemeral local storage)" if is_sqlite else "PostgreSQL / External RDBMS (persistent)"
+    logger.info(f"Initializing database tables using backend: {backend_name}")
     Base.metadata.create_all(bind=engine)
 
 

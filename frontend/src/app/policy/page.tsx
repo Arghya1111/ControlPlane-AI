@@ -399,6 +399,13 @@ export default function PolicyPage() {
           </div>
         </div>
       </div>
+
+      {/* Persistence & Storage Disclaimer Footer */}
+      <div className="pt-6 border-t border-slate-800 text-center">
+        <p className="text-xs text-slate-500 font-mono">
+          <span className="text-amber-400/90 font-semibold">⚠️ Notice:</span> Audit data is ephemeral in this deployment; a production version would use a persistent database (e.g. Render Postgres or an external managed DB).
+        </p>
+      </div>
     </div>
   );
 }

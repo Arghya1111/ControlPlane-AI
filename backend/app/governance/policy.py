@@ -1,7 +1,10 @@
 import os
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger("controlplane.policy")
 
 try:
     import yaml  # type: ignore
@@ -11,7 +14,8 @@ except ImportError:
 
 from app.models import ChannelType, RiskTolerance, FailMode, DecisionTier, UseCaseProfile
 
-CONFIG_DIR = Path(__file__).parent.parent / "config"
+# Ensure robust module-relative path resolution regardless of process cwd
+CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 
 
 class PolicyConfig(BaseModel):
@@ -129,6 +133,7 @@ class PolicyManager:
         alias_map: Dict[str, str] = {}
 
         if not target_dir.exists():
+            logger.warning(f"Config directory {target_dir} does not exist.")
             return {}
 
         yaml_files = list(target_dir.glob("*.yaml")) + list(target_dir.glob("*.yml"))
@@ -147,8 +152,9 @@ class PolicyManager:
                     alias_map[policy.id] = policy.id
                     for alias in policy.aliases:
                         alias_map[alias] = policy.id
+                    logger.debug(f"Loaded policy config for '{policy.id}' from {yf.name}")
             except Exception as e:
-                # Log or ignore corrupted configs
+                logger.error(f"Failed to load policy from {yf}: {e}")
                 continue
 
         cls._policies = policies
