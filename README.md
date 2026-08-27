@@ -26,7 +26,7 @@ Copy `.env.example` to `.env` and fill in your keys:
 cp .env.example .env
 ```
 Key variables:
-- `ANTHROPIC_API_KEY`: Anthropic Claude API key for AI-as-a-Judge evaluations.
+- `GEMINI_API_KEY`: Google Gemini API key for AI-as-a-Judge evaluations.
 - `ALLOWED_ORIGINS`: Comma-separated list of origins (defaults to `http://localhost:3000`).
 - `DATABASE_URL`: Database connection string (defaults to local SQLite `sqlite:///./controlplane.db`).
 
@@ -74,7 +74,7 @@ cd frontend && npm run dev
    - **Health Check Path**: `/health`
 4. Under the service's **Environment** tab on Render, configure:
    - `ALLOWED_ORIGINS`: `https://control-plane-ai.vercel.app,http://localhost:3000` *(Vercel preview branch URLs `https://*.vercel.app` are also automatically supported via regex)*
-   - `ANTHROPIC_API_KEY`: Your Anthropic API key.
+   - `GEMINI_API_KEY`: Your Google Gemini API key.
    - `DATABASE_URL` *(Optional)*: Internal connection string to a Render PostgreSQL instance.
 
 ---

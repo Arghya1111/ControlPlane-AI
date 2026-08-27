@@ -22,7 +22,7 @@ flowchart TD
     subgraph Detectors ["3. Concurrent Risk Detectors (asyncio.gather)"]
         D1["PII Entity Detector\n(Dual-tag Privacy + Hallucination)"]
         D2["Retrieval Verification\n(Sentence-Level Grounding)"]
-        D3["AI-as-a-Judge\n(Claude 3.5 Sonnet / Rubric)"]
+        D3["AI-as-a-Judge\n(Google Gemini 2.5 Flash / Rubric)"]
         D4["Bias Heuristic Detector\n(Stereotype + Statistical Guard)"]
         D5["Statistical Anomaly\n(Cosine Distance vs SQLite Pool)"]
         
@@ -105,7 +105,7 @@ flowchart TD
 ### 3. Five-Tier Risk Detector Layer (`backend/app/detectors/`)
 1. **`PIIEntityDetector`**: Identifies structured entities (Emails, Phone Numbers, SSNs, Credit Cards, Bank Accounts, Addresses). Dual-tags unprompted PII as `["privacy", "hallucination"]` when personal details are fabricated.
 2. **`RetrievalVerificationDetector`**: Breaks candidate responses into claim sentences and computes maximum grounding similarity against `retrieved_context`. Returns explicit `confidence=0.0` with `"no ground truth available"` when context is absent.
-3. **`AIJudgeDetector`**: Calls Anthropic Claude (`claude-sonnet-4-6`) with a strict scoring rubric, bounded by request-level timeouts (~70% of total budget) and graceful error fallback.
+3. **`AIJudgeDetector`**: Calls Google Gemini (`gemini-2.5-flash`) with a strict scoring rubric and structured JSON schema, bounded by request-level timeouts (~70% of total budget) and graceful error fallback.
 4. **`BiasHeuristicDetector`**: Scans for demographic slurs, exclusionary generalizations, and stereotypes. Applies a `0.3x` confidence discount when factual statements include statistical qualifiers (numbers, percentages, *"on average"*).
 5. **`StatisticalAnomalyDetector`**: Compares dense embeddings against a rolling SQLite baseline pool (capped at 500 records). Features a cold-start guard (&lt;10 historical samples returns `confidence=0.0`).
 

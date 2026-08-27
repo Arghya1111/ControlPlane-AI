@@ -151,7 +151,7 @@ async def test_retrieval_configurable_threshold_override():
 
 
 # =============================================================================
-# 3. AIJudgeDetector Tests (including internal timeout)
+# 3. AIJudgeDetector Tests (Google Gemini SDK Mocking & Fault Tolerance)
 # =============================================================================
 
 @pytest.mark.asyncio
@@ -169,22 +169,48 @@ async def test_ai_judge_unavailable_fallback():
     assert signal.confidence == 0.0
     assert signal.latency_ms >= 0.0
     assert "judge unavailable" in signal.evidence.lower()
+    assert "gemini_api_key" in signal.evidence.lower()
 
 
 @pytest.mark.asyncio
-async def test_ai_judge_successful_structured_mock():
-    """Case 2 (Risky / Parsed Response): Mocked LLM judge response returning high bias/hallucination."""
-    detector = AIJudgeDetector(api_key="mock-key-12345")
+async def test_ai_judge_clean_example():
+    """Case 2 (Clean): Gemini judge returns low risk for safe, neutral response."""
+    detector = AIJudgeDetector(api_key="mock-gemini-key")
     mock_client = MagicMock()
     mock_response = MagicMock()
-    mock_content = MagicMock()
-    mock_content.text = (
-        '{"bias_risk": 0.85, "hallucination_likelihood": 0.20, '
-        '"bias_justification": "Generalizes negatively against demographic group.", '
-        '"hallucination_justification": "Factual basis is accurate."}'
+    mock_response.text = (
+        '{"bias_score": 0.05, "bias_justification": "Safe and inclusive language.", '
+        '"hallucination_score": 0.02, "hallucination_justification": "Accurate information provided."}'
     )
-    mock_response.content = [mock_content]
-    mock_client.messages.create.return_value = mock_response
+    mock_client.models.generate_content.return_value = mock_response
+    detector._client = mock_client
+
+    request = CheckRequest(
+        id="judge-clean",
+        use_case_id="internal_hr_assistant",
+        prompt="How do I submit an expense report?",
+        ai_response="Navigate to the portal and click Submit Expense.",
+    )
+    signal = await detector.check(request)
+    assert isinstance(signal, RiskSignal)
+    assert signal.confidence == 0.05
+    assert signal.latency_ms >= 0.0
+    assert "bias" in signal.risk_dimensions
+    assert "hallucination" in signal.risk_dimensions
+    assert "AI Judge (gemini-2.5-flash)" in signal.evidence
+
+
+@pytest.mark.asyncio
+async def test_ai_judge_obviously_risky_mock():
+    """Case 3 (Obviously Risky): Gemini judge returns high bias score with justification."""
+    detector = AIJudgeDetector(api_key="mock-gemini-key")
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = (
+        '{"bias_score": 0.88, "bias_justification": "Generalizes negatively against demographic group.", '
+        '"hallucination_score": 0.15, "hallucination_justification": "Factual basis is accurate."}'
+    )
+    mock_client.models.generate_content.return_value = mock_response
     detector._client = mock_client
 
     request = CheckRequest(
@@ -195,16 +221,43 @@ async def test_ai_judge_successful_structured_mock():
     )
     signal = await detector.check(request)
     assert isinstance(signal, RiskSignal)
-    assert signal.confidence == 0.85
+    assert signal.confidence == 0.88
     assert signal.latency_ms >= 0.0
-    assert "bias" in signal.risk_dimensions
-    assert "AI Judge" in signal.evidence
+    assert signal.risk_dimensions == ["bias"]
+    assert "AI Judge (gemini-2.5-flash)" in signal.evidence
+
+
+@pytest.mark.asyncio
+async def test_ai_judge_ambiguous_hallucination_mock():
+    """Case 4 (Ambiguous / Risky Hallucination): Gemini judge flags high hallucination score."""
+    detector = AIJudgeDetector(api_key="mock-gemini-key")
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = (
+        '{"bias_score": 0.10, "bias_justification": "No demographic bias detected.", '
+        '"hallucination_score": 0.75, "hallucination_justification": "Contains fabricated policy clauses."}'
+    )
+    mock_client.models.generate_content.return_value = mock_response
+    detector._client = mock_client
+
+    request = CheckRequest(
+        id="judge-mock-hal",
+        use_case_id="wealth_advisor_copilot",
+        prompt="What is the crypto withdrawal limit?",
+        ai_response="You can withdraw $10,000,000 in crypto with zero regulatory disclosure.",
+    )
+    signal = await detector.check(request)
+    assert isinstance(signal, RiskSignal)
+    assert signal.confidence == 0.75
+    assert signal.latency_ms >= 0.0
+    assert signal.risk_dimensions == ["hallucination"]
+    assert "AI Judge (gemini-2.5-flash)" in signal.evidence
 
 
 @pytest.mark.asyncio
 async def test_ai_judge_internal_timeout():
     """Phase 2 Hardening: Verify slow judge call triggers request-level timeout gracefully."""
-    detector = AIJudgeDetector(api_key="mock-key-12345", timeout_seconds=0.05)
+    detector = AIJudgeDetector(api_key="mock-gemini-key", timeout_seconds=0.05)
     mock_client = MagicMock()
 
     def _slow_api_call(*args, **kwargs):
@@ -212,7 +265,7 @@ async def test_ai_judge_internal_timeout():
         time.sleep(0.2)
         return MagicMock()
 
-    mock_client.messages.create.side_effect = _slow_api_call
+    mock_client.models.generate_content.side_effect = _slow_api_call
     detector._client = mock_client
 
     request = CheckRequest(
@@ -225,6 +278,50 @@ async def test_ai_judge_internal_timeout():
     assert isinstance(signal, RiskSignal)
     assert signal.confidence == 0.0
     assert "judge unavailable: request timed out" in signal.evidence.lower()
+
+
+@pytest.mark.asyncio
+async def test_ai_judge_malformed_json_fallback():
+    """Requirement: Unparseable/malformed JSON degrades gracefully with confidence=0.0."""
+    detector = AIJudgeDetector(api_key="mock-gemini-key")
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.text = "This is not JSON text at all, just plain conversational output."
+    mock_response.parsed = None
+    mock_client.models.generate_content.return_value = mock_response
+    detector._client = mock_client
+
+    request = CheckRequest(
+        id="judge-malformed-json",
+        use_case_id="customer_support_bot",
+        prompt="Tell me about loan options",
+        ai_response="Here are loan options.",
+    )
+    signal = await detector.check(request)
+    assert isinstance(signal, RiskSignal)
+    assert signal.confidence == 0.0
+    assert signal.latency_ms >= 0.0
+    assert "judge unavailable: failed to parse structured json evaluation" in signal.evidence.lower()
+
+
+@pytest.mark.asyncio
+async def test_ai_judge_rate_limit_fallback():
+    """Requirement: HTTP 429 / ResourceExhausted degrades gracefully with specific evidence."""
+    detector = AIJudgeDetector(api_key="mock-gemini-key")
+    mock_client = MagicMock()
+    mock_client.models.generate_content.side_effect = Exception("429 ResourceExhausted: Quota exceeded for requests per minute")
+    detector._client = mock_client
+
+    request = CheckRequest(
+        id="judge-rate-limit",
+        use_case_id="customer_support_bot",
+        prompt="Check my claim",
+        ai_response="Claim approved.",
+    )
+    signal = await detector.check(request)
+    assert isinstance(signal, RiskSignal)
+    assert signal.confidence == 0.0
+    assert "judge unavailable: rate limit exceeded (http 429)" in signal.evidence.lower()
 
 
 # =============================================================================

@@ -72,7 +72,7 @@ const STATIC_POLICY_DETAILS: Record<string, {
     purpose: "Fiduciary-grade investment advisor copilot requiring strict ground-truth verification and independent AI-judge validation.",
     detectors: [
       { name: "retrieval_verification_detector", weight: 35, description: "Strict sentence-level grounding against financial prospectus" },
-      { name: "ai_judge_detector", weight: 30, description: "Claude-based AI-as-a-Judge evaluating fiduciary compliance" },
+      { name: "ai_judge_detector", weight: 30, description: "Gemini-based AI-as-a-Judge evaluating fiduciary compliance" },
       { name: "pii_entity_detector", weight: 20, description: "Guards against account numbers and SSN exposures" },
       { name: "bias_heuristic_detector", weight: 10, description: "Filters lending and demographic bias in wealth advice" },
       { name: "statistical_anomaly_detector", weight: 5, description: "Flags uncharacteristic financial model drift" },
